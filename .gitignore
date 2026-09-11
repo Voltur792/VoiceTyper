@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.tmp-*/
+.pytest_cache/
+
+# Local models (vosk, faster-whisper) — downloaded separately
+models/
+
+# Build artifacts
+dist/
+build/
