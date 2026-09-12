@@ -28,6 +28,8 @@ STATUS_TEXT = {
     "dictating": "● Диктовка",
     "sending": "Отправка…",
     "vosk model missing (see models/)": "Нет модели Vosk — вкладка «Настройки»",
+    "installing dependencies (one-time, see logs)…": "Устанавливаю зависимости…",
+    "vosk unavailable (dependency install failed)": "Не удалось установить зависимости — см. логи",
 }
 
 ENGINE_TEXT = {
@@ -300,6 +302,8 @@ class AppWindow:
         self.download_btn.grid(row=3, column=0, sticky="w", padx=6, pady=3)
         self.download_progress = ttk.Progressbar(eng, length=160, maximum=100)
         self.download_progress.grid(row=3, column=1, sticky="w", padx=6, pady=3)
+        self.download_status = ttk.Label(eng, style="Muted.TLabel", text="")
+        self.download_status.grid(row=4, column=0, columnspan=2, sticky="w", padx=6)
         eng.columnconfigure(1, weight=1)
 
         cloud = ttk.LabelFrame(parent, text="Ключи облачных провайдеров")
@@ -445,21 +449,33 @@ class AppWindow:
     def _download_model(self) -> None:
         self.download_btn.state(["disabled"])
         self._download_cancel.clear()
+        self.download_status.config(text="Скачивание…")
 
         def progress(done_mb: float, total_mb: float) -> None:
             pct = min(100.0, done_mb / total_mb * 100.0) if total_mb else 0
-            self.root.after(0, lambda p=pct: self.download_progress.configure(value=p))
+            text = f"{done_mb:.0f} из {total_mb:.0f} МБ"
+
+            def apply(p: float = pct, t: str = text) -> None:
+                self.download_progress.configure(value=p)
+                self.download_status.config(text=t)
+            self.root.after(0, apply)
 
         def worker() -> None:
-            result = models.download_vosk_model(progress, self._download_cancel.is_set)
+            error: str | None = None
+            try:
+                result = models.download_vosk_model(progress, self._download_cancel.is_set)
+            except Exception as exc:  # noqa: BLE001 — show anything to the user
+                result, error = None, str(exc)
 
-            def done():
+            def done() -> None:
                 self.download_btn.state(["!disabled"])
                 self.download_progress.configure(value=0)
                 if result:
+                    self.download_status.config(text="Модель скачана")
                     self._set_status_text("Модель Vosk скачана")
                     self.engine.apply_settings(self.settings)
                 else:
+                    self.download_status.config(text=error or "Не удалось скачать модель")
                     self._set_status_text("Не удалось скачать модель")
             self.root.after(0, done)
 

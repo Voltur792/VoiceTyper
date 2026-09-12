@@ -6,7 +6,6 @@ into the user cache automatically on first use.
 """
 
 import logging
-import shutil
 import sys
 import urllib.request
 import zipfile
@@ -46,15 +45,21 @@ def download_vosk_model(progress=None, should_cancel=None) -> Path | None:
         request = urllib.request.Request(
             VOSK_MODEL_URL, headers={"User-Agent": "voice-text-input/1.0"})
 
-        def hook(blocks, block_size, total):
-            if should_cancel is not None and should_cancel():
-                raise KeyboardInterrupt
-            if progress is not None and total > 0:
-                progress(blocks * block_size / 1e6, total / 1e6)
-
         with urllib.request.urlopen(request, timeout=60) as response, \
                 open(archive, "wb") as out:
-            shutil.copyfileobj(response, out, 262144, hook)
+            # shutil.copyfileobj has no progress callback — read in chunks.
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            while True:
+                if should_cancel is not None and should_cancel():
+                    raise KeyboardInterrupt
+                chunk = response.read(262144)
+                if not chunk:
+                    break
+                out.write(chunk)
+                done += len(chunk)
+                if progress is not None and total > 0:
+                    progress(done / 1e6, total / 1e6)
         with zipfile.ZipFile(archive) as zf:
             zf.extractall(target)
         unpacked = sorted(target.glob("vosk-model*ru*"))
@@ -64,6 +69,6 @@ def download_vosk_model(progress=None, should_cancel=None) -> Path | None:
         return None
     except Exception as exc:
         log.warning("vosk model download failed: %s", exc)
-        return None
+        raise RuntimeError(f"не удалось скачать модель: {exc}") from exc
     finally:
         archive.unlink(missing_ok=True)
